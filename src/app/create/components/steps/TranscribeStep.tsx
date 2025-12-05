@@ -30,17 +30,29 @@ export function TranscribeStep() {
 
       const formData = new FormData();
 
-      // Determine file extension based on MIME type
-      const mimeType = state.audioBlob.type || 'audio/webm';
-      const extension = mimeType.includes('mp4') ? 'mp4'
-        : mimeType.includes('webm') ? 'webm'
-        : mimeType.includes('wav') ? 'wav'
-        : mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3'
-        : 'webm';
+      // If it's already a File with a name, preserve the original filename
+      // This ensures the correct extension is sent to Whisper API
+      let file: File;
 
-      const file = new File([state.audioBlob], `recording.${extension}`, {
-        type: mimeType,
-      });
+      if (state.audioBlob instanceof File && state.audioBlob.name) {
+        // Use the original file directly - preserves filename and extension
+        file = state.audioBlob;
+      } else {
+        // For recorded audio (Blob), determine extension from MIME type
+        const mimeType = state.audioBlob.type || 'audio/webm';
+        const extension = mimeType.includes('m4a') ? 'm4a'
+          : mimeType.includes('mp4') ? 'mp4'
+          : mimeType.includes('webm') ? 'webm'
+          : mimeType.includes('wav') ? 'wav'
+          : mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3'
+          : mimeType.includes('ogg') || mimeType.includes('oga') ? 'ogg'
+          : mimeType.includes('flac') ? 'flac'
+          : 'webm';
+
+        file = new File([state.audioBlob], `recording.${extension}`, {
+          type: mimeType,
+        });
+      }
 
       formData.append('audio', file);
 

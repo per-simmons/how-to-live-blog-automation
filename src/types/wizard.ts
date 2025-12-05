@@ -1,5 +1,12 @@
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
+// Image with its associated content section
+export interface SectionImage {
+  base64: string;
+  position: 'header' | 'middle1' | 'middle2' | 'closing';
+  sectionContent: string; // The content this image was generated from
+}
+
 export interface WizardState {
   currentStep: WizardStep;
 
@@ -22,10 +29,14 @@ export interface WizardState {
   editedContent: string;
   postTitle: string;
 
-  // Step 5: Image
-  imageBase64: string | null;
+  // Step 5: Images (4 images for different sections)
+  sectionImages: SectionImage[];
+  currentImageIndex: number; // 0-3, which image is being generated
   isGeneratingImage: boolean;
   imageError: string | null;
+
+  // Legacy single image field for backwards compatibility
+  imageBase64: string | null;
 
   // Step 6: Output
   finalHtml: string;
@@ -44,8 +55,11 @@ export type WizardAction =
   | { type: 'SET_GENERATE_ERROR'; payload: string }
   | { type: 'SET_EDITED_CONTENT'; payload: string }
   | { type: 'SET_POST_TITLE'; payload: string }
-  | { type: 'START_GENERATING_IMAGE' }
-  | { type: 'SET_IMAGE'; payload: string }
+  | { type: 'START_GENERATING_IMAGE'; payload?: number } // index of image being generated
+  | { type: 'SET_IMAGE'; payload: string } // Legacy single image
+  | { type: 'ADD_SECTION_IMAGE'; payload: SectionImage }
+  | { type: 'SET_ALL_SECTION_IMAGES'; payload: SectionImage[] }
+  | { type: 'CLEAR_SECTION_IMAGES' }
   | { type: 'SET_IMAGE_ERROR'; payload: string }
   | { type: 'SET_FINAL_HTML'; payload: string }
   | { type: 'RESET' };
@@ -55,6 +69,9 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   2: 'Transcribe',
   3: 'Generate',
   4: 'Edit',
-  5: 'Image',
+  5: 'Images',
   6: 'Output',
 };
+
+export const IMAGE_POSITIONS = ['header', 'middle1', 'middle2', 'closing'] as const;
+export type ImagePosition = typeof IMAGE_POSITIONS[number];

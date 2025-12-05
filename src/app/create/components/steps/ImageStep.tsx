@@ -2,27 +2,36 @@
 
 import { useCallback, useEffect } from 'react';
 import { useWizard } from '../WizardProvider';
-import { generateImage } from '@/actions/generate-image';
+import { generateAllSectionImages } from '@/actions/generate-image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { IMAGE_POSITIONS } from '@/types/wizard';
+
+const POSITION_LABELS: Record<string, string> = {
+  header: 'Header Image',
+  middle1: 'Middle Image 1',
+  middle2: 'Middle Image 2',
+  closing: 'Closing Image',
+};
 
 export function ImageStep() {
   const { state, dispatch } = useWizard();
 
-  const handleGenerateImage = useCallback(async () => {
+  const handleGenerateImages = useCallback(async () => {
     if (!state.editedContent) return;
 
-    dispatch({ type: 'START_GENERATING_IMAGE' });
+    dispatch({ type: 'START_GENERATING_IMAGE', payload: 0 });
+    dispatch({ type: 'CLEAR_SECTION_IMAGES' });
 
     try {
-      const result = await generateImage(state.editedContent);
+      const result = await generateAllSectionImages(state.editedContent);
 
-      if (result.success && result.imageBase64) {
-        dispatch({ type: 'SET_IMAGE', payload: result.imageBase64 });
+      if (result.success && result.images) {
+        dispatch({ type: 'SET_ALL_SECTION_IMAGES', payload: result.images });
       } else {
         dispatch({
           type: 'SET_IMAGE_ERROR',
-          payload: result.error || 'Failed to generate image',
+          payload: result.error || 'Failed to generate images',
         });
       }
     } catch (error) {
@@ -34,24 +43,27 @@ export function ImageStep() {
     }
   }, [state.editedContent, dispatch]);
 
-  // Auto-generate image when step is reached and no image exists
+  // Auto-generate images when step is reached and no images exist
   useEffect(() => {
     if (
       state.editedContent &&
-      !state.imageBase64 &&
+      state.sectionImages.length === 0 &&
       !state.isGeneratingImage &&
       !state.imageError
     ) {
-      handleGenerateImage();
+      handleGenerateImages();
     }
-  }, [state.editedContent, state.imageBase64, state.isGeneratingImage, state.imageError, handleGenerateImage]);
+  }, [state.editedContent, state.sectionImages.length, state.isGeneratingImage, state.imageError, handleGenerateImages]);
+
+  const completedCount = state.sectionImages.length;
+  const totalCount = 4;
 
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl font-semibold">Generate Illustration</h2>
+        <h2 className="text-2xl font-semibold">Generate Illustrations</h2>
         <p className="text-muted-foreground">
-          Creating a watercolor illustration for your blog post
+          Creating 4 watercolor illustrations for your blog post
         </p>
       </div>
 
@@ -72,14 +84,29 @@ export function ImageStep() {
       {/* Image Generation Loading State */}
       {state.isGeneratingImage && (
         <Card>
-          <CardContent className="py-12">
+          <CardContent className="py-8">
             <div className="flex flex-col items-center justify-center space-y-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
               <div className="text-center">
-                <p className="text-lg font-medium">Creating your illustration...</p>
+                <p className="text-lg font-medium">Creating your illustrations...</p>
                 <p className="text-sm text-muted-foreground">
-                  Generating a watercolor-style image based on your content
+                  Generating {completedCount + 1} of {totalCount} images
                 </p>
+              </div>
+              {/* Progress indicator */}
+              <div className="flex gap-2 mt-4">
+                {IMAGE_POSITIONS.map((pos, idx) => (
+                  <div
+                    key={pos}
+                    className={`w-3 h-3 rounded-full ${
+                      idx < completedCount
+                        ? 'bg-green-500'
+                        : idx === completedCount
+                        ? 'bg-primary animate-pulse'
+                        : 'bg-muted'
+                    }`}
+                  />
+                ))}
               </div>
             </div>
           </CardContent>
@@ -111,44 +138,63 @@ export function ImageStep() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={handleGenerateImage} variant="outline">
+            <Button onClick={handleGenerateImages} variant="outline">
               Try Again
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Generated Image */}
-      {!state.isGeneratingImage && state.imageBase64 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Generated Illustration</span>
-              <span className="text-sm font-normal text-muted-foreground">
-                1536 x 1024
-              </span>
-            </CardTitle>
-            <CardDescription>
-              This watercolor illustration will be included with your blog post
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative aspect-[3/2] overflow-hidden rounded-lg bg-muted">
-              <img
-                src={`data:image/png;base64,${state.imageBase64}`}
-                alt="Generated illustration"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={handleGenerateImage} variant="outline" size="sm">
-                Regenerate Image
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Generated Images Grid */}
+      {!state.isGeneratingImage && state.sectionImages.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium">
+              Generated Illustrations ({completedCount}/{totalCount})
+            </h3>
+            <Button onClick={handleGenerateImages} variant="outline" size="sm">
+              Regenerate All
+            </Button>
+          </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {IMAGE_POSITIONS.map((position) => {
+              const image = state.sectionImages.find(img => img.position === position);
+
+              return (
+                <Card key={position}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      {POSITION_LABELS[position]}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {image ? (
+                      <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
+                        <img
+                          src={`data:image/png;base64,${image.base64}`}
+                          alt={POSITION_LABELS[position]}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="aspect-video flex items-center justify-center bg-muted rounded-lg">
+                        <p className="text-sm text-muted-foreground">Not generated</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {completedCount < totalCount && (
+            <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
+              {totalCount - completedCount} image(s) failed to generate. You can proceed or try regenerating.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

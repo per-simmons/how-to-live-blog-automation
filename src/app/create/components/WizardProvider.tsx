@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, ReactNode } from 'react';
-import { WizardState, WizardAction, WizardStep } from '@/types/wizard';
+import { WizardState, WizardAction, WizardStep, SectionImage } from '@/types/wizard';
 
 const initialState: WizardState = {
   currentStep: 1,
@@ -16,9 +16,11 @@ const initialState: WizardState = {
   generateError: null,
   editedContent: '',
   postTitle: '',
-  imageBase64: null,
+  sectionImages: [],
+  currentImageIndex: 0,
   isGeneratingImage: false,
   imageError: null,
+  imageBase64: null, // Legacy field
   finalHtml: '',
 };
 
@@ -105,14 +107,63 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
         ...state,
         isGeneratingImage: true,
         imageError: null,
+        currentImageIndex: action.payload ?? 0,
       };
 
     case 'SET_IMAGE':
+      // Legacy single image support
       return {
         ...state,
         imageBase64: action.payload,
         isGeneratingImage: false,
         imageError: null,
+      };
+
+    case 'ADD_SECTION_IMAGE':
+      // Add a single section image (used during sequential generation)
+      const newImage = action.payload as SectionImage;
+      const existingIndex = state.sectionImages.findIndex(
+        img => img.position === newImage.position
+      );
+
+      let updatedImages: SectionImage[];
+      if (existingIndex >= 0) {
+        // Replace existing image at this position
+        updatedImages = [...state.sectionImages];
+        updatedImages[existingIndex] = newImage;
+      } else {
+        // Add new image
+        updatedImages = [...state.sectionImages, newImage];
+      }
+
+      return {
+        ...state,
+        sectionImages: updatedImages,
+        currentImageIndex: state.currentImageIndex + 1,
+        // Also set legacy field to header image for backwards compat
+        imageBase64: newImage.position === 'header' ? newImage.base64 : state.imageBase64,
+      };
+
+    case 'SET_ALL_SECTION_IMAGES':
+      // Set all 4 images at once
+      const allImages = action.payload as SectionImage[];
+      const headerImage = allImages.find(img => img.position === 'header');
+      return {
+        ...state,
+        sectionImages: allImages,
+        isGeneratingImage: false,
+        imageError: null,
+        currentImageIndex: allImages.length,
+        // Set legacy field for backwards compat
+        imageBase64: headerImage?.base64 ?? null,
+      };
+
+    case 'CLEAR_SECTION_IMAGES':
+      return {
+        ...state,
+        sectionImages: [],
+        currentImageIndex: 0,
+        imageBase64: null,
       };
 
     case 'SET_IMAGE_ERROR':
@@ -178,7 +229,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       case 4:
         return state.editedContent.length > 0;
       case 5:
-        return state.imageBase64 !== null && !state.isGeneratingImage;
+        // Require at least 1 image, ideally all 4
+        return state.sectionImages.length >= 1 && !state.isGeneratingImage;
       case 6:
         return false;
       default:

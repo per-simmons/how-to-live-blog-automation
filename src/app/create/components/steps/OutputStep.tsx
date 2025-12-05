@@ -5,6 +5,87 @@ import { useWizard } from '../WizardProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SectionImage } from '@/types/wizard';
+
+// Split HTML content into paragraphs
+function splitHtmlIntoParagraphs(html: string): string[] {
+  // Split by closing </p> tags and filter empty strings
+  const parts = html.split(/<\/p>/i);
+  return parts
+    .map(part => {
+      const trimmed = part.trim();
+      if (!trimmed) return '';
+      // Re-add the closing tag if there was content
+      return trimmed.includes('<p') ? trimmed + '</p>' : '';
+    })
+    .filter(p => p.length > 0);
+}
+
+// Build final HTML with images peppered throughout
+function buildFinalHtml(
+  editedContent: string,
+  sectionImages: SectionImage[],
+  postTitle: string
+): string {
+  const paragraphs = splitHtmlIntoParagraphs(editedContent);
+
+  if (paragraphs.length === 0) {
+    return editedContent;
+  }
+
+  // Find images by position
+  const headerImage = sectionImages.find(img => img.position === 'header');
+  const middle1Image = sectionImages.find(img => img.position === 'middle1');
+  const middle2Image = sectionImages.find(img => img.position === 'middle2');
+  const closingImage = sectionImages.find(img => img.position === 'closing');
+
+  // Calculate insertion points
+  const totalParagraphs = paragraphs.length;
+
+  // Header image: after first paragraph (or at the very top if only 1 paragraph)
+  const headerInsertIndex = 1;
+
+  // Middle images: divide remaining paragraphs into thirds
+  // Middle1: around 1/3 of the way through
+  // Middle2: around 2/3 of the way through
+  const middle1InsertIndex = Math.max(2, Math.floor(totalParagraphs * 0.33));
+  const middle2InsertIndex = Math.max(3, Math.floor(totalParagraphs * 0.66));
+
+  // Build image HTML helper
+  const makeImageHtml = (image: SectionImage | undefined, alt: string) => {
+    if (!image) return '';
+    return `<img src="data:image/png;base64,${image.base64}" alt="${alt}" style="width: 100%; max-width: 800px; height: auto; margin: 24px 0; border-radius: 8px;" />`;
+  };
+
+  // Build the final HTML array
+  const result: string[] = [];
+
+  // Add header image at the very top
+  if (headerImage) {
+    result.push(makeImageHtml(headerImage, postTitle + ' - Header'));
+  }
+
+  for (let i = 0; i < paragraphs.length; i++) {
+    result.push(paragraphs[i]);
+
+    // Insert middle1 image after its position
+    if (i === middle1InsertIndex - 1 && middle1Image) {
+      result.push(makeImageHtml(middle1Image, postTitle + ' - Illustration'));
+    }
+
+    // Insert middle2 image after its position
+    if (i === middle2InsertIndex - 1 && middle2Image) {
+      result.push(makeImageHtml(middle2Image, postTitle + ' - Illustration'));
+    }
+  }
+
+  // Add closing image at the end
+  if (closingImage) {
+    result.push(makeImageHtml(closingImage, postTitle + ' - Closing'));
+  }
+
+  return result.join('\n\n');
+}
 
 export function OutputStep() {
   const { state, dispatch } = useWizard();
@@ -12,16 +93,15 @@ export function OutputStep() {
 
   // Generate final HTML when step is reached
   useEffect(() => {
-    if (state.editedContent && state.imageBase64) {
-      const imageDataUrl = `data:image/png;base64,${state.imageBase64}`;
-
-      const finalHtml = `<img src="${imageDataUrl}" alt="${state.postTitle}" style="width: 100%; max-width: 800px; height: auto; margin-bottom: 24px; border-radius: 8px;" />
-
-${state.editedContent}`;
-
+    if (state.editedContent && state.sectionImages.length > 0) {
+      const finalHtml = buildFinalHtml(
+        state.editedContent,
+        state.sectionImages,
+        state.postTitle
+      );
       dispatch({ type: 'SET_FINAL_HTML', payload: finalHtml });
     }
-  }, [state.editedContent, state.imageBase64, state.postTitle, dispatch]);
+  }, [state.editedContent, state.sectionImages, state.postTitle, dispatch]);
 
   const handleCopyHtml = useCallback(async () => {
     try {
@@ -58,6 +138,8 @@ ${state.editedContent}`;
     dispatch({ type: 'RESET' });
   }, [dispatch]);
 
+  const imageCount = state.sectionImages.length;
+
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
@@ -89,7 +171,7 @@ ${state.editedContent}`;
                 All steps completed
               </p>
               <p className="text-sm text-green-600 dark:text-green-500">
-                Your blog post with image is ready to use
+                Your blog post with {imageCount} illustration{imageCount !== 1 ? 's' : ''} is ready to use
               </p>
             </div>
           </div>

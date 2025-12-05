@@ -43,7 +43,7 @@ function splitContentIntoSections(htmlContent: string): string[] {
   return sections;
 }
 
-// Generate a single image using Gemini Imagen 3
+// Generate a single image using Gemini 3 Pro Image Preview (Nano Banana Pro)
 async function generateSingleImage(
   sectionContent: string,
   position: ImagePosition
@@ -52,7 +52,7 @@ async function generateSingleImage(
     // Create a prompt that captures the essence of this section
     const contextSummary = sectionContent.slice(0, 300);
 
-    const prompt = `Hand-painted watercolor illustration inspired by this contemplative theme: "${contextSummary}".
+    const prompt = `Generate a hand-painted watercolor illustration inspired by this contemplative theme: "${contextSummary}".
 
 Style requirements:
 - Soft washes of color with visible paper texture
@@ -66,55 +66,56 @@ Style requirements:
 - No text or words in the image
 - Landscape orientation (wider than tall)`;
 
-    // Use Imagen 3 API via REST with x-goog-api-key header
+    // Use Gemini 3 Pro Image Preview (Nano Banana Pro) - the latest Google image generation model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-goog-api-key': GEMINI_API_KEY!,
         },
         body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: '16:9',
-          },
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            responseModalities: ['IMAGE']
+          }
         }),
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', response.status, errorText);
+      console.error('Gemini Image API error:', response.status, errorText);
       return { success: false, error: `API error: ${response.status} - ${errorText}` };
     }
 
     const data = await response.json();
-    console.log('Gemini API response keys:', Object.keys(data));
 
-    // Imagen 3 returns generatedImages array with image.imageBytes
-    if (!data.generatedImages || data.generatedImages.length === 0) {
-      // Check for predictions format as fallback (older API)
-      if (data.predictions && data.predictions.length > 0) {
-        const imageBase64 = data.predictions[0].bytesBase64Encoded;
-        if (imageBase64) {
-          return { success: true, base64: imageBase64 };
-        }
-      }
-      console.error('Unexpected response format:', JSON.stringify(data).slice(0, 500));
-      return { success: false, error: 'No image generated - unexpected response format' };
+    // Gemini 3 Pro Image returns candidates array with content.parts containing inlineData
+    if (!data.candidates || data.candidates.length === 0) {
+      console.error('No candidates in response:', JSON.stringify(data).slice(0, 500));
+      return { success: false, error: 'No image generated' };
     }
 
-    const imageBase64 = data.generatedImages[0].image?.imageBytes;
-
-    if (!imageBase64) {
-      console.error('No imageBytes in response:', JSON.stringify(data.generatedImages[0]).slice(0, 500));
+    const parts = data.candidates[0]?.content?.parts;
+    if (!parts || parts.length === 0) {
+      console.error('No parts in response:', JSON.stringify(data.candidates[0]).slice(0, 500));
       return { success: false, error: 'No image data in response' };
     }
 
-    return { success: true, base64: imageBase64 };
+    // Find the image part (inlineData with mimeType starting with 'image/')
+    const imagePart = parts.find((part: { inlineData?: { mimeType?: string; data?: string } }) =>
+      part.inlineData?.mimeType?.startsWith('image/')
+    );
+
+    if (!imagePart?.inlineData?.data) {
+      console.error('No image inlineData in parts:', JSON.stringify(parts).slice(0, 500));
+      return { success: false, error: 'No image data in response' };
+    }
+
+    return { success: true, base64: imagePart.inlineData.data };
   } catch (error) {
     console.error('Image generation error:', error);
     return {

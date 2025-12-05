@@ -66,13 +66,14 @@ Style requirements:
 - No text or words in the image
 - Landscape orientation (wider than tall)`;
 
-    // Use Imagen 3 API via REST
+    // Use Imagen 3 API via REST with x-goog-api-key header
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-goog-api-key': GEMINI_API_KEY!,
         },
         body: JSON.stringify({
           instances: [{ prompt }],
@@ -87,19 +88,29 @@ Style requirements:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Gemini API error:', response.status, errorText);
-      return { success: false, error: `API error: ${response.status}` };
+      return { success: false, error: `API error: ${response.status} - ${errorText}` };
     }
 
     const data = await response.json();
+    console.log('Gemini API response keys:', Object.keys(data));
 
-    if (!data.predictions || data.predictions.length === 0) {
-      return { success: false, error: 'No image generated' };
+    // Imagen 3 returns generatedImages array with image.imageBytes
+    if (!data.generatedImages || data.generatedImages.length === 0) {
+      // Check for predictions format as fallback (older API)
+      if (data.predictions && data.predictions.length > 0) {
+        const imageBase64 = data.predictions[0].bytesBase64Encoded;
+        if (imageBase64) {
+          return { success: true, base64: imageBase64 };
+        }
+      }
+      console.error('Unexpected response format:', JSON.stringify(data).slice(0, 500));
+      return { success: false, error: 'No image generated - unexpected response format' };
     }
 
-    // Imagen 3 returns base64 in bytesBase64Encoded field
-    const imageBase64 = data.predictions[0].bytesBase64Encoded;
+    const imageBase64 = data.generatedImages[0].image?.imageBytes;
 
     if (!imageBase64) {
+      console.error('No imageBytes in response:', JSON.stringify(data.generatedImages[0]).slice(0, 500));
       return { success: false, error: 'No image data in response' };
     }
 
